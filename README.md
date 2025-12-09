@@ -33,7 +33,5 @@ npm run preview   # локальный просмотр собранной ве�
 Продавец: producer@beatmarket.ru / seller123
 Админ: admin@beatmarket.ru / admin123
 
-aleksey@gmail.com / 123456
-anton@gmail.com / 123456
-
-© 2025 BeatMarket. Курсовой проект.
+Покупатель: aleksey@gmail.com / 123456
+Продавец: anton@gmail.com / 123456
