@@ -24,6 +24,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  const setItemSafe = (key: string, value: unknown) => {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch (error) {
+      console.warn(`Failed to persist ${key}`, error);
+    }
+  };
+
   // Initialize users from localStorage or defaults
   useEffect(() => {
     const storedUsers = localStorage.getItem(USERS_STORAGE_KEY);
@@ -42,7 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     } else {
       setUsers(initialUsers);
-      localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(initialUsers));
+      setItemSafe(USERS_STORAGE_KEY, initialUsers);
     }
     
     setIsLoading(false);
@@ -51,7 +59,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Sync users to localStorage
   useEffect(() => {
     if (users.length > 0) {
-      localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
+      setItemSafe(USERS_STORAGE_KEY, users);
     }
   }, [users]);
 
@@ -60,7 +68,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     
     if (foundUser) {
       setUser(foundUser);
-      localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(foundUser.id));
+      setItemSafe(CURRENT_USER_KEY, foundUser.id);
       return { success: true };
     }
     
@@ -90,7 +98,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const updatedUsers = [...users, newUser];
     setUsers(updatedUsers);
     setUser(newUser);
-    localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(newUser.id));
+    setItemSafe(CURRENT_USER_KEY, newUser.id);
     
     return { success: true };
   };
@@ -111,26 +119,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const updateUserWallet = (userId: string, rubDelta: number, usdDelta: number) => {
-    const updatedUsers = users.map(u => {
-      if (u.id === userId) {
-        return {
-          ...u,
-          walletRub: u.walletRub + rubDelta,
-          walletUsd: u.walletUsd + usdDelta,
-        };
-      }
-      return u;
-    });
-    
-    setUsers(updatedUsers);
-    
-    if (user && user.id === userId) {
-      setUser({
-        ...user,
-        walletRub: user.walletRub + rubDelta,
-        walletUsd: user.walletUsd + usdDelta,
+    setUsers(prevUsers => {
+      const nextUsers = prevUsers.map(u => {
+        if (u.id === userId) {
+          return {
+            ...u,
+            walletRub: u.walletRub + rubDelta,
+            walletUsd: u.walletUsd + usdDelta,
+          };
+        }
+        return u;
       });
-    }
+
+      setItemSafe(USERS_STORAGE_KEY, nextUsers);
+
+      if (user && user.id === userId) {
+        const updated = nextUsers.find(u => u.id === userId);
+        if (updated) {
+          setUser(updated);
+        }
+      }
+
+      return nextUsers;
+    });
   };
 
   const getUserById = (id: string) => users.find(u => u.id === id);

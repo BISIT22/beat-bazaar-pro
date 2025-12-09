@@ -51,6 +51,7 @@ export interface NewsItem {
   id: string;
   title: string;
   description: string;
+  text?: string;
   imageUrl: string;
   category: string;
   author: string;

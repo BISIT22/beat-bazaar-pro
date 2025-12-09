@@ -18,7 +18,9 @@ export default function Admin() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [text, setText] = useState('');
   const [imageUrl, setImageUrl] = useState('');
+  const [imageFile, setImageFile] = useState<File | null>(null);
   const [category, setCategory] = useState('');
   const [author, setAuthor] = useState('');
 
@@ -35,27 +37,47 @@ export default function Admin() {
   }
 
   const resetForm = () => {
-    setTitle(''); setDescription(''); setImageUrl(''); setCategory(''); setAuthor('');
+    setTitle(''); setDescription(''); setText(''); setImageUrl(''); setImageFile(null); setCategory(''); setAuthor('');
     setIsAdding(false); setEditingId(null);
   };
 
-  const handleAdd = () => {
-    if (!title || !description) { toast({ title: 'Заполните обязательные поля', variant: 'destructive' }); return; }
-    addNews({ title, description, imageUrl: imageUrl || 'https://images.unsplash.com/photo-1598488035139-bdbb2231ce04?w=800&h=400&fit=crop', category: category || 'Новости', author: author || 'Редакция' });
-    toast({ title: 'Новость добавлена' });
-    resetForm();
+  const readFileAsDataUrl = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
+  const handleAdd = async () => {
+    if (!title || !description || !text) { toast({ title: 'Заполните обязательные поля', variant: 'destructive' }); return; }
+    try {
+      const image = imageFile ? await readFileAsDataUrl(imageFile) : (imageUrl || 'https://images.unsplash.com/photo-1598488035139-bdbb2231ce04?w=800&h=400&fit=crop');
+      addNews({ title, description, text, imageUrl: image, category: category || 'Новости', author: author || 'Редакция' });
+      toast({ title: 'Новость добавлена' });
+      resetForm();
+    } catch (error) {
+      console.error(error);
+      toast({ title: 'Ошибка чтения изображения', variant: 'destructive' });
+    }
   };
 
-  const handleUpdate = () => {
+  const handleUpdate = async () => {
     if (!editingId) return;
-    updateNews(editingId, { title, description, imageUrl, category, author });
-    toast({ title: 'Новость обновлена' });
-    resetForm();
+    try {
+      const image = imageFile ? await readFileAsDataUrl(imageFile) : imageUrl;
+      updateNews(editingId, { title, description, text, imageUrl: image, category, author });
+      toast({ title: 'Новость обновлена' });
+      resetForm();
+    } catch (error) {
+      console.error(error);
+      toast({ title: 'Ошибка чтения изображения', variant: 'destructive' });
+    }
   };
 
   const handleEdit = (item: typeof news[0]) => {
-    setEditingId(item.id); setTitle(item.title); setDescription(item.description);
-    setImageUrl(item.imageUrl); setCategory(item.category); setAuthor(item.author);
+    setEditingId(item.id); setTitle(item.title); setDescription(item.description); setText(item.text || '');
+    setImageUrl(item.imageUrl); setImageFile(null); setCategory(item.category); setAuthor(item.author);
     setIsAdding(false);
   };
 
@@ -87,10 +109,24 @@ export default function Admin() {
               <div className="grid gap-4">
                 <div><Label>Заголовок *</Label><Input value={title} onChange={(e) => setTitle(e.target.value)} /></div>
                 <div><Label>Описание *</Label><Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} /></div>
+                <div><Label>Текст *</Label><Textarea value={text} onChange={(e) => setText(e.target.value)} rows={5} /></div>
                 <div className="grid md:grid-cols-3 gap-4">
                   <div><Label>Категория</Label><Input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Новости" /></div>
                   <div><Label>Автор</Label><Input value={author} onChange={(e) => setAuthor(e.target.value)} placeholder="Редакция" /></div>
-                  <div><Label>URL изображения</Label><Input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} /></div>
+                  <div className="space-y-1">
+                    <Label>Изображение (JPG)</Label>
+                    <Input
+                      type="file"
+                      accept="image/jpeg"
+                      onChange={(e) => setImageFile(e.target.files?.[0] || null)}
+                    />
+                    <Input
+                      value={imageUrl}
+                      onChange={(e) => setImageUrl(e.target.value)}
+                      placeholder="https://... (опционально)"
+                    />
+                    <p className="text-xs text-muted-foreground">Загрузите JPG или укажите ссылку.</p>
+                  </div>
                 </div>
                 <Button onClick={editingId ? handleUpdate : handleAdd} variant="gradient" className="gap-2"><Save className="w-4 h-4" />{editingId ? 'Сохранить' : 'Добавить'}</Button>
               </div>

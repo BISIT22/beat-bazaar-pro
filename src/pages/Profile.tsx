@@ -7,12 +7,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/contexts/AuthContext';
 import { useData } from '@/contexts/DataContext';
-import { User, Wallet, Music, ShoppingBag, Edit2, Save } from 'lucide-react';
+import { User, Wallet, Music, ShoppingBag, Edit2, Save, Plus, Download, Trash2 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
+import { getAudioObjectUrl, getWavObjectUrl } from '@/lib/audio-store';
 
 export default function Profile() {
-  const { user, updateUser } = useAuth();
-  const { getSellerBeats, getSellerPurchases, getBuyerPurchases, beats } = useData();
+  const { user, updateUser, updateUserWallet } = useAuth();
+  const { getSellerBeats, getSellerPurchases, getBuyerPurchases, beats, deleteBeat } = useData();
   
   const [isEditing, setIsEditing] = useState(false);
   const [name, setName] = useState(user?.name || '');
@@ -43,6 +44,63 @@ export default function Profile() {
     updateUser({ name, bio, avatar });
     setIsEditing(false);
     toast({ title: 'Профиль обновлён' });
+  };
+
+  const handleDeleteBeat = (beatId: string, title: string) => {
+    deleteBeat(beatId);
+    toast({ title: 'Бит удалён', description: title });
+  };
+
+  const handleTopUp = (currency: 'RUB' | 'USD') => {
+    if (!user) return;
+    const rubDelta = currency === 'RUB' ? 5000 : 0;
+    const usdDelta = currency === 'USD' ? 50 : 0;
+    updateUserWallet(user.id, rubDelta, usdDelta);
+    toast({
+      title: 'Баланс пополнен',
+      description: currency === 'RUB' ? `+₽${rubDelta}` : `+$${usdDelta}`,
+    });
+  };
+
+  const sanitizeFileName = (title: string, ext: string) =>
+    `${title.replace(/[^\w\d-_]+/g, '_')}.${ext}`;
+
+  const resolveDownloadUrl = async (beat: typeof beats[number], type: 'mp3' | 'wav') => {
+    const url = type === 'mp3' ? beat.audioUrl : beat.wavUrl;
+    if (!url) return undefined;
+
+    if (url.startsWith('idb://')) {
+      return getAudioObjectUrl(beat.id);
+    }
+    if (url.startsWith('idb-wav://')) {
+      return getWavObjectUrl(beat.id);
+    }
+    return url;
+  };
+
+  const handleDownload = async (beat: typeof beats[number], type: 'mp3' | 'wav') => {
+    try {
+      const url = await resolveDownloadUrl(beat, type);
+      if (!url) {
+        toast({ title: 'Файл недоступен', variant: 'destructive' });
+        return;
+      }
+
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = sanitizeFileName(beat.title, type);
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+
+      if (url.startsWith('blob:')) {
+        setTimeout(() => URL.revokeObjectURL(url), 2000);
+      }
+    } catch (error) {
+      console.error(error);
+      toast({ title: 'Ошибка скачивания', variant: 'destructive' });
+    }
   };
 
   return (
@@ -82,15 +140,35 @@ export default function Profile() {
 
           {/* Stats */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-            <div className="glass-card rounded-xl p-4 text-center">
+            <div className="glass-card rounded-xl p-4 text-center relative">
               <Wallet className="w-6 h-6 mx-auto mb-2 text-success" />
               <p className="text-2xl font-bold">₽{user.walletRub.toLocaleString()}</p>
               <p className="text-xs text-muted-foreground">Баланс (₽)</p>
+              {user.role === 'buyer' && (
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="absolute top-3 right-3 h-8 w-8"
+                  onClick={() => handleTopUp('RUB')}
+                >
+                  <Plus className="w-4 h-4" />
+                </Button>
+              )}
             </div>
-            <div className="glass-card rounded-xl p-4 text-center">
+            <div className="glass-card rounded-xl p-4 text-center relative">
               <Wallet className="w-6 h-6 mx-auto mb-2 text-primary" />
               <p className="text-2xl font-bold">${user.walletUsd.toLocaleString()}</p>
               <p className="text-xs text-muted-foreground">Баланс ($)</p>
+              {user.role === 'buyer' && (
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="absolute top-3 right-3 h-8 w-8"
+                  onClick={() => handleTopUp('USD')}
+                >
+                  <Plus className="w-4 h-4" />
+                </Button>
+              )}
             </div>
             {user.role === 'seller' ? (
               <>
@@ -129,12 +207,26 @@ export default function Profile() {
                   {sellerBeats.map(beat => (
                     <div key={beat.id} className="flex items-center gap-4 p-3 rounded-lg bg-secondary/50">
                       <img src={beat.coverUrl} alt={beat.title} className="w-12 h-12 rounded object-cover" />
-                      <div className="flex-1"><p className="font-medium">{beat.title}</p><p className="text-xs text-muted-foreground">{beat.salesCount} продаж</p></div>
+                      <div className="flex-1">
+                        <p className="font-medium">{beat.title}</p>
+                        <p className="text-xs text-muted-foreground">{beat.salesCount} продаж</p>
+                      </div>
                       <span className="text-sm font-medium">₽{beat.priceRub}</span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleDeleteBeat(beat.id, beat.title)}
+                        className="text-muted-foreground hover:text-destructive"
+                        title="Удалить бит"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
                     </div>
                   ))}
                 </div>
-              ) : <p className="text-muted-foreground">Вы ещё не загрузили биты</p>}
+              ) : (
+                <p className="text-muted-foreground">Вы ещё не загрузили биты</p>
+              )}
             </div>
           )}
 
@@ -145,16 +237,53 @@ export default function Profile() {
                 <div className="space-y-3">
                   {buyerPurchases.map(purchase => {
                     const beat = beats.find(b => b.id === purchase.beatId);
-                    return beat ? (
-                      <div key={purchase.id} className="flex items-center gap-4 p-3 rounded-lg bg-secondary/50">
-                        <img src={beat.coverUrl} alt={beat.title} className="w-12 h-12 rounded object-cover" />
-                        <div className="flex-1"><p className="font-medium">{beat.title}</p><p className="text-xs text-muted-foreground">{beat.sellerName}</p></div>
-                        <span className="text-sm">{purchase.currency === 'RUB' ? `₽${purchase.priceRub}` : `$${purchase.priceUsd}`}</span>
+                    if (!beat) return null;
+                    return (
+                      <div
+                        key={purchase.id}
+                        className="flex flex-col md:flex-row md:items-center gap-3 p-3 rounded-lg bg-secondary/50"
+                      >
+                        <div className="flex items-center gap-4 flex-1 min-w-0">
+                          <img
+                            src={beat.coverUrl}
+                            alt={beat.title}
+                            className="w-12 h-12 rounded object-cover flex-shrink-0"
+                          />
+                          <div className="min-w-0">
+                            <p className="font-medium truncate">{beat.title}</p>
+                            <p className="text-xs text-muted-foreground truncate">{beat.sellerName}</p>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {purchase.currency === 'RUB'
+                                ? `Оплачено: ₽${purchase.priceRub}`
+                                : `Оплачено: $${purchase.priceUsd}`}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2">
+                          <Button size="sm" variant="outline" className="gap-1" onClick={() => handleDownload(beat, 'mp3')}>
+                            <Download className="w-4 h-4" />
+                            MP3
+                          </Button>
+                          {beat.wavUrl && (
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              className="gap-1"
+                              onClick={() => handleDownload(beat, 'wav')}
+                            >
+                              <Download className="w-4 h-4" />
+                              WAV
+                            </Button>
+                          )}
+                        </div>
                       </div>
-                    ) : null;
+                    );
                   })}
                 </div>
-              ) : <p className="text-muted-foreground">Вы ещё не купили биты</p>}
+              ) : (
+                <p className="text-muted-foreground">Вы ещё не купили биты</p>
+              )}
             </div>
           )}
         </div>

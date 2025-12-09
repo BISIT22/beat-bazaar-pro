@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Layout } from '@/components/layout/Layout';
 import { NewsCard } from '@/components/news/NewsCard';
 import { useData } from '@/contexts/DataContext';
@@ -5,6 +6,7 @@ import { Newspaper } from 'lucide-react';
 
 export default function News() {
   const { news } = useData();
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const featuredNews = news[0];
   const otherNews = news.slice(1);
@@ -26,7 +28,12 @@ export default function News() {
               {/* Featured news */}
               {featuredNews && (
                 <div className="mb-8">
-                  <NewsCard news={featuredNews} size="large" />
+                  <NewsCard
+                    news={featuredNews}
+                    size="large"
+                    isExpanded={expandedId === featuredNews.id}
+                    onToggle={(id) => setExpandedId(expandedId === id ? null : id)}
+                  />
                 </div>
               )}
 
@@ -34,7 +41,11 @@ export default function News() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {otherNews.map((item, index) => (
                   <div key={item.id} style={{ animationDelay: `${index * 0.1}s` }}>
-                    <NewsCard news={item} />
+                    <NewsCard
+                      news={item}
+                      isExpanded={expandedId === item.id}
+                      onToggle={(id) => setExpandedId(expandedId === id ? null : id)}
+                    />
                   </div>
                 ))}
               </div>

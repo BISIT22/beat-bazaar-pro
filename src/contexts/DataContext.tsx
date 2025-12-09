@@ -1,7 +1,18 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { Beat, NewsItem, Purchase, FavoriteItem, Rating, CartItem } from '@/types';
 import { initialBeats, initialNews, initialPurchases, initialFavorites, initialRatings } from '@/data/mockData';
+import { saveAudioBlob, saveWavBlob, deleteAudioBlobs, getAudioObjectUrl } from '@/lib/audio-store';
 import { useAuth } from './AuthContext';
+
+type NewBeatInput = Omit<
+  Beat,
+  'id' | 'createdAt' | 'rating' | 'ratingCount' | 'salesCount' | 'plays' | 'audioUrl' | 'wavUrl'
+> & {
+  audioUrl?: string;
+  wavUrl?: string;
+  audioFile?: File | null;
+  wavFile?: File | null;
+};
 
 interface DataContextType {
   beats: Beat[];
@@ -10,7 +21,7 @@ interface DataContextType {
   favorites: FavoriteItem[];
   ratings: Rating[];
   cart: CartItem[];
-  addBeat: (beat: Omit<Beat, 'id' | 'createdAt' | 'rating' | 'ratingCount' | 'salesCount' | 'plays'>) => void;
+  addBeat: (beat: NewBeatInput) => Promise<void>;
   updateBeat: (id: string, updates: Partial<Beat>) => void;
   deleteBeat: (id: string) => void;
   addNews: (news: Omit<NewsItem, 'id' | 'createdAt'>) => void;
@@ -40,6 +51,9 @@ const FAVORITES_KEY = 'beatmarket_favorites';
 const RATINGS_KEY = 'beatmarket_ratings';
 const CART_KEY = 'beatmarket_cart';
 
+// Биты, которые нужно полностью удалить из системы
+const REMOVED_BEAT_IDS: string[] = [];
+
 export function DataProvider({ children }: { children: ReactNode }) {
   const { user, updateUserWallet } = useAuth();
   
@@ -62,20 +76,66 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // Initialize data from localStorage
+  const setItemSafe = (key: string, value: unknown) => {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch (error) {
+      console.warn(`Failed to persist ${key}`, error);
+    }
+  };
+
+  // Initialize data from localStorage or manifest in /public/audio
   useEffect(() => {
-    setBeats(parseSafe(BEATS_KEY, initialBeats));
-    setNews(parseSafe(NEWS_KEY, initialNews));
-    setPurchases(parseSafe(PURCHASES_KEY, initialPurchases));
-    setFavorites(parseSafe(FAVORITES_KEY, initialFavorites));
-    setRatings(parseSafe(RATINGS_KEY, initialRatings));
+    const loadData = async () => {
+      const storedBeats = parseSafe<Beat[]>(BEATS_KEY, []).filter(
+        (b) => !REMOVED_BEAT_IDS.includes(b.id)
+      );
+
+      if (storedBeats.length > 0) {
+        setBeats(storedBeats);
+      } else {
+        try {
+          const res = await fetch('/audio/manifest.json');
+          if (res.ok) {
+            const manifestBeats = (await res.json()) as Beat[];
+            const filtered = manifestBeats.filter(b => !REMOVED_BEAT_IDS.includes(b.id));
+            setBeats(filtered.length > 0 ? filtered : initialBeats);
+          } else {
+            setBeats(initialBeats);
+          }
+        } catch (error) {
+          console.warn('Failed to load /audio/manifest.json, falling back to initialBeats', error);
+          setBeats(initialBeats);
+        }
+      }
+
+      const purchasesData = parseSafe<Purchase[]>(PURCHASES_KEY, initialPurchases).filter(
+        (p) => !REMOVED_BEAT_IDS.includes(p.beatId)
+      );
+      const favoritesData = parseSafe<FavoriteItem[]>(FAVORITES_KEY, initialFavorites).filter(
+        (f) => !REMOVED_BEAT_IDS.includes(f.beatId)
+      );
+      const ratingsData = parseSafe<Rating[]>(RATINGS_KEY, initialRatings).filter(
+        (r) => !REMOVED_BEAT_IDS.includes(r.beatId)
+      );
+
+      setNews(parseSafe(NEWS_KEY, initialNews));
+      setPurchases(purchasesData);
+      setFavorites(favoritesData);
+      setRatings(ratingsData);
+    };
+
+    loadData();
   }, []);
 
   // Load cart for current user
   useEffect(() => {
     if (user) {
       const cartKey = `${CART_KEY}_${user.id}`;
-      setCart(parseSafe(cartKey, []));
+      const cartData = parseSafe<CartItem[]>(cartKey, []).filter(
+        (item) => !REMOVED_BEAT_IDS.includes(item.beatId)
+      );
+      setCart(cartData);
     } else {
       setCart([]);
     }
@@ -83,42 +143,54 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   // Sync to localStorage
   useEffect(() => {
-    if (beats.length > 0) localStorage.setItem(BEATS_KEY, JSON.stringify(beats));
+    if (beats.length > 0) setItemSafe(BEATS_KEY, beats);
   }, [beats]);
 
   useEffect(() => {
-    if (news.length > 0) localStorage.setItem(NEWS_KEY, JSON.stringify(news));
+    if (news.length > 0) setItemSafe(NEWS_KEY, news);
   }, [news]);
 
   useEffect(() => {
-    localStorage.setItem(PURCHASES_KEY, JSON.stringify(purchases));
+    setItemSafe(PURCHASES_KEY, purchases);
   }, [purchases]);
 
   useEffect(() => {
-    localStorage.setItem(FAVORITES_KEY, JSON.stringify(favorites));
+    setItemSafe(FAVORITES_KEY, favorites);
   }, [favorites]);
 
   useEffect(() => {
-    localStorage.setItem(RATINGS_KEY, JSON.stringify(ratings));
+    setItemSafe(RATINGS_KEY, ratings);
   }, [ratings]);
 
   useEffect(() => {
     if (user) {
       const cartKey = `${CART_KEY}_${user.id}`;
-      localStorage.setItem(cartKey, JSON.stringify(cart));
+      setItemSafe(cartKey, cart);
     }
   }, [cart, user]);
 
-  const addBeat = (beat: Omit<Beat, 'id' | 'createdAt' | 'rating' | 'ratingCount' | 'salesCount' | 'plays'>) => {
+  const addBeat = async (beat: NewBeatInput) => {
+    const newBeatId = `beat-${Date.now()}`;
+
+    if (beat.audioFile) {
+      await saveAudioBlob(newBeatId, beat.audioFile);
+    }
+    if (beat.wavFile) {
+      await saveWavBlob(newBeatId, beat.wavFile);
+    }
+
     const newBeat: Beat = {
       ...beat,
-      id: `beat-${Date.now()}`,
+      audioUrl: beat.audioFile ? `idb://${newBeatId}` : beat.audioUrl || '',
+      wavUrl: beat.wavFile ? `idb-wav://${newBeatId}` : beat.wavUrl,
+      id: newBeatId,
       createdAt: new Date().toISOString(),
       rating: 0,
       ratingCount: 0,
       salesCount: 0,
       plays: 0,
     };
+
     setBeats(prev => [newBeat, ...prev]);
   };
 
@@ -128,6 +200,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const deleteBeat = (id: string) => {
     setBeats(prev => prev.filter(b => b.id !== id));
+    setFavorites(prev => prev.filter(f => f.beatId !== id));
+    setRatings(prev => prev.filter(r => r.beatId !== id));
+    setCart(prev => prev.filter(c => c.beatId !== id));
+    deleteAudioBlobs(id).catch(() => undefined);
   };
 
   const addNews = (newsItem: Omit<NewsItem, 'id' | 'createdAt'>) => {

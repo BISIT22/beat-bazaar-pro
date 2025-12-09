@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useRef, useEffect, ReactNod
 import { Beat } from '@/types';
 import { useAuth } from './AuthContext';
 import { useData } from './DataContext';
+import { getAudioObjectUrl } from '@/lib/audio-store';
 
 interface PlayerContextType {
   currentBeat: Beat | null;
@@ -10,7 +11,7 @@ interface PlayerContextType {
   duration: number;
   volume: number;
   queue: Beat[];
-  play: (beat: Beat) => void;
+  play: (beat: Beat) => Promise<void>;
   pause: () => void;
   toggle: () => void;
   seek: (time: number) => void;
@@ -28,6 +29,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const { incrementPlays } = useData();
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const objectUrlRef = useRef<string | null>(null);
   const [currentBeat, setCurrentBeat] = useState<Beat | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -91,16 +93,34 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
   }, [currentTime, currentBeat, hasCountedPlay, incrementPlays]);
 
-  const play = (beat: Beat) => {
+  const resolveAudioSrc = async (beat: Beat) => {
+    if (beat.audioUrl?.startsWith('idb://')) {
+      const url = await getAudioObjectUrl(beat.id);
+      return url;
+    }
+    return beat.audioUrl;
+  };
+
+  const play = async (beat: Beat) => {
     if (!user || !audioRef.current) return;
 
     if (currentBeat?.id !== beat.id) {
-      audioRef.current.src = beat.audioUrl;
+      const src = await resolveAudioSrc(beat);
+      if (!src) return;
+      if (objectUrlRef.current) {
+        URL.revokeObjectURL(objectUrlRef.current);
+        objectUrlRef.current = null;
+      }
+      // Remember object URLs to revoke later
+      if (src.startsWith('blob:')) {
+        objectUrlRef.current = src;
+      }
+      audioRef.current.src = src;
       setCurrentBeat(beat);
       setHasCountedPlay(false);
     }
     
-    audioRef.current.play();
+    await audioRef.current.play();
     setIsPlaying(true);
   };
 
@@ -138,6 +158,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (queue.length > 0) {
       const nextBeat = queue[0];
       setQueue(prev => prev.slice(1));
+      play(nextBeat);
       play(nextBeat);
     }
   };

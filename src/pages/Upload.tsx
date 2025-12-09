@@ -27,7 +27,8 @@ export default function Upload() {
   const [bpm, setBpm] = useState('');
   const [key, setKey] = useState('');
   const [coverUrl, setCoverUrl] = useState('');
-  const [audioUrl, setAudioUrl] = useState('');
+  const [audioFile, setAudioFile] = useState<File | null>(null);
+  const [wavFile, setWavFile] = useState<File | null>(null);
 
   if (!user || user.role !== 'seller') {
     return (
@@ -41,32 +42,38 @@ export default function Upload() {
     );
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!title || !priceRub || !priceUsd || !genre || !bpm || !key) {
+    if (!title || !priceRub || !priceUsd || !genre || !bpm || !key || !audioFile) {
       toast({ title: 'Заполните все поля', variant: 'destructive' });
       return;
     }
 
-    addBeat({
-      sellerId: user.id,
-      sellerName: user.name,
-      title,
-      description,
-      coverUrl: coverUrl || 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=400&h=400&fit=crop',
-      audioUrl: audioUrl || 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3',
-      priceRub: Number(priceRub),
-      priceUsd: Number(priceUsd),
-      currency,
-      genre,
-      tags: tags.split(',').map(t => t.trim().toLowerCase()).filter(Boolean),
-      bpm: Number(bpm),
-      key,
-    });
+    try {
+      await addBeat({
+        sellerId: user.id,
+        sellerName: user.name,
+        title,
+        description,
+        coverUrl: coverUrl || 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=400&h=400&fit=crop',
+        audioFile,
+        wavFile,
+        priceRub: Number(priceRub),
+        priceUsd: Number(priceUsd),
+        currency,
+        genre,
+        tags: tags.split(',').map(t => t.trim().toLowerCase()).filter(Boolean),
+        bpm: Number(bpm),
+        key,
+      });
 
-    toast({ title: 'Бит загружен!', description: title });
-    navigate('/profile');
+      toast({ title: 'Бит загружен!', description: title });
+      navigate('/profile');
+    } catch (error) {
+      console.error(error);
+      toast({ title: 'Ошибка при сохранении файла', variant: 'destructive' });
+    }
   };
 
   return (
@@ -112,9 +119,45 @@ export default function Upload() {
               </div>
             </div>
 
-            <div className="space-y-2"><Label>Теги (через запятую)</Label><Input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="trap, dark, 808" /></div>
-            <div className="space-y-2"><Label>URL обложки</Label><Input value={coverUrl} onChange={(e) => setCoverUrl(e.target.value)} placeholder="https://..." /></div>
-            <div className="space-y-2"><Label>URL аудио (MP3)</Label><Input value={audioUrl} onChange={(e) => setAudioUrl(e.target.value)} placeholder="https://..." /></div>
+            <div className="space-y-2">
+              <Label>Теги (через запятую)</Label>
+              <Input
+                value={tags}
+                onChange={(e) => setTags(e.target.value)}
+                placeholder="trap, dark, 808"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>URL обложки</Label>
+              <Input
+                value={coverUrl}
+                onChange={(e) => setCoverUrl(e.target.value)}
+                placeholder="https://..."
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Аудио (MP3) *</Label>
+              <Input
+                type="file"
+                accept="audio/mpeg,audio/mp3"
+                onChange={(e) => setAudioFile(e.target.files?.[0] || null)}
+                required
+              />
+              <p className="text-xs text-muted-foreground">
+                Загрузите MP3-файл, который будет использоваться для прослушивания и скачивания.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label>Аудио (WAV, опционально)</Label>
+              <Input
+                type="file"
+                accept="audio/wav"
+                onChange={(e) => setWavFile(e.target.files?.[0] || null)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Если загрузить WAV, он будет доступен покупателю для скачивания вместе с MP3 после покупки.
+              </p>
+            </div>
 
             <Button type="submit" variant="gradient" size="lg" className="w-full gap-2"><UploadIcon className="w-5 h-5" />Загрузить бит</Button>
           </form>

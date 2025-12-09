@@ -15,12 +15,13 @@ interface BeatCardProps {
 
 export function BeatCard({ beat, onPlay }: BeatCardProps) {
   const { user } = useAuth();
-  const { addToCart, cart, toggleFavorite, isFavorite } = useData();
+  const { addToCart, cart, toggleFavorite, isFavorite, getUserRating, rateBeat } = useData();
   const { currentBeat, isPlaying, play, pause } = usePlayer();
 
   const isCurrentBeat = currentBeat?.id === beat.id;
   const isInCart = cart.some(item => item.beatId === beat.id);
   const isFav = isFavorite(beat.id);
+  const userRating = getUserRating(beat.id);
 
   const handlePlayClick = () => {
     if (!user) {
@@ -77,6 +78,30 @@ export function BeatCard({ beat, onPlay }: BeatCardProps) {
     }
 
     toggleFavorite(beat.id);
+  };
+
+  const handleRate = (value: number) => {
+    if (!user) {
+      toast({
+        title: 'Авторизуйтесь',
+        description: 'Войдите в аккаунт, чтобы ставить оценки',
+        variant: 'destructive',
+      });
+      return;
+    }
+    if (user.role !== 'buyer') {
+      toast({
+        title: 'Недоступно',
+        description: 'Оценки доступны только покупателям',
+        variant: 'destructive',
+      });
+      return;
+    }
+    rateBeat(beat.id, value);
+    toast({
+      title: 'Оценка сохранена',
+      description: `Вы поставили ${value} из 5`,
+    });
   };
 
   return (
@@ -161,6 +186,34 @@ export function BeatCard({ beat, onPlay }: BeatCardProps) {
               #{tag}
             </Badge>
           ))}
+        </div>
+
+        {/* Rating */}
+        <div className="flex items-center justify-between border border-border/60 rounded-lg px-3 py-2">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Star className="w-4 h-4 text-warning fill-warning" />
+            <span className="font-medium text-foreground">{beat.rating.toFixed(1)}</span>
+            <span className="text-xs">({beat.ratingCount})</span>
+          </div>
+          {user?.role === 'buyer' && (
+            <div className="flex items-center gap-1">
+              {[1, 2, 3, 4, 5].map((value) => (
+                <button
+                  key={value}
+                  onClick={() => handleRate(value)}
+                  className="p-1"
+                  title={`Поставить ${value}`}
+                >
+                  <Star
+                    className={cn(
+                      "w-4 h-4",
+                      (userRating ?? 0) >= value ? "text-warning fill-warning" : "text-muted-foreground"
+                    )}
+                  />
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Price & Actions */}
