@@ -50,26 +50,32 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [ratings, setRatings] = useState<Rating[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
 
+  const parseSafe = <T,>(key: string, fallback: T): T => {
+    const stored = localStorage.getItem(key);
+    if (!stored) return fallback;
+    try {
+      return JSON.parse(stored) as T;
+    } catch (error) {
+      console.warn(`Failed to parse ${key} from localStorage, resetting`, error);
+      localStorage.removeItem(key);
+      return fallback;
+    }
+  };
+
   // Initialize data from localStorage
   useEffect(() => {
-    const loadData = (key: string, initial: any) => {
-      const stored = localStorage.getItem(key);
-      return stored ? JSON.parse(stored) : initial;
-    };
-
-    setBeats(loadData(BEATS_KEY, initialBeats));
-    setNews(loadData(NEWS_KEY, initialNews));
-    setPurchases(loadData(PURCHASES_KEY, initialPurchases));
-    setFavorites(loadData(FAVORITES_KEY, initialFavorites));
-    setRatings(loadData(RATINGS_KEY, initialRatings));
+    setBeats(parseSafe(BEATS_KEY, initialBeats));
+    setNews(parseSafe(NEWS_KEY, initialNews));
+    setPurchases(parseSafe(PURCHASES_KEY, initialPurchases));
+    setFavorites(parseSafe(FAVORITES_KEY, initialFavorites));
+    setRatings(parseSafe(RATINGS_KEY, initialRatings));
   }, []);
 
   // Load cart for current user
   useEffect(() => {
     if (user) {
       const cartKey = `${CART_KEY}_${user.id}`;
-      const stored = localStorage.getItem(cartKey);
-      setCart(stored ? JSON.parse(stored) : []);
+      setCart(parseSafe(cartKey, []));
     } else {
       setCart([]);
     }
