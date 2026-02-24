@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { Beat, NewsItem, Purchase, FavoriteItem, Rating, CartItem } from '@/types';
-import { initialBeats, initialNews, initialPurchases, initialFavorites, initialRatings } from '@/data/mockData';
+import { Beat, NewsItem, Purchase, FavoriteItem, Rating, CartItem, Friend, Collaboration, Notification } from '@/types';
+import { initialBeats, initialNews, initialPurchases, initialFavorites, initialRatings, initialFriends, initialCollaborations, initialNotifications } from '@/data/mockData';
 import { saveAudioBlob, saveWavBlob, deleteAudioBlobs, getAudioObjectUrl } from '@/lib/audio-store';
 import { useAuth } from './AuthContext';
 
@@ -21,7 +21,10 @@ interface DataContextType {
   favorites: FavoriteItem[];
   ratings: Rating[];
   cart: CartItem[];
-  addBeat: (beat: NewBeatInput) => Promise<void>;
+  friends: Friend[];
+  collaborations: Collaboration[];
+  notifications: Notification[];
+  addBeat: (beat: NewBeatInput) => Promise<{success: boolean, beatId: string}>;
   updateBeat: (id: string, updates: Partial<Beat>) => void;
   deleteBeat: (id: string) => void;
   addNews: (news: Omit<NewsItem, 'id' | 'createdAt'>) => void;
@@ -36,6 +39,19 @@ interface DataContextType {
   rateBeat: (beatId: string, rating: number) => void;
   getUserRating: (beatId: string) => number | null;
   incrementPlays: (beatId: string) => void;
+  addFriend: (userId: string, friendId: string) => void;
+  removeFriend: (friendId: string) => void;
+  acceptFriendRequest: (requestId: string) => void;
+  rejectFriendRequest: (requestId: string) => void;
+  getFriends: (userId: string) => Friend[];
+  isFriend: (userId: string, friendId: string) => boolean;
+  addCollaboration: (beatId: string, collaborators: string[]) => void;
+  getCollaborations: (userId: string) => Collaboration[];
+  addNotification: (notification: Omit<Notification, 'id' | 'createdAt' | 'isRead'>) => void;
+  markNotificationAsRead: (notificationId: string) => void;
+  deleteNotification: (notificationId: string) => void;
+  getUnreadNotifications: (userId: string) => Notification[];
+  getAllNotifications: (userId: string) => Notification[];
   getSellerBeats: (sellerId: string) => Beat[];
   getSellerPurchases: (sellerId: string) => Purchase[];
   getBuyerPurchases: (buyerId: string) => Purchase[];
@@ -50,12 +66,15 @@ const PURCHASES_KEY = 'beatmarket_purchases';
 const FAVORITES_KEY = 'beatmarket_favorites';
 const RATINGS_KEY = 'beatmarket_ratings';
 const CART_KEY = 'beatmarket_cart';
+const FRIENDS_KEY = 'beatmarket_friends';
+const COLLABORATIONS_KEY = 'beatmarket_collaborations';
+const NOTIFICATIONS_KEY = 'beatmarket_notifications';
 
 // Биты, которые нужно полностью удалить из системы
 const REMOVED_BEAT_IDS: string[] = [];
 
 export function DataProvider({ children }: { children: ReactNode }) {
-  const { user, updateUserWallet } = useAuth();
+  const { user, users, updateUserWallet, updateUser: updateUserFromAuth } = useAuth();
   
   const [beats, setBeats] = useState<Beat[]>([]);
   const [news, setNews] = useState<NewsItem[]>([]);
@@ -63,6 +82,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [favorites, setFavorites] = useState<FavoriteItem[]>([]);
   const [ratings, setRatings] = useState<Rating[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [friends, setFriends] = useState<Friend[]>([]);
+  const [collaborations, setCollaborations] = useState<Collaboration[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
 
   const parseSafe = <T,>(key: string, fallback: T): T => {
     const stored = localStorage.getItem(key);
@@ -118,11 +140,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const ratingsData = parseSafe<Rating[]>(RATINGS_KEY, initialRatings).filter(
         (r) => !REMOVED_BEAT_IDS.includes(r.beatId)
       );
+      const friendsData = parseSafe<Friend[]>(FRIENDS_KEY, initialFriends);
+      const collaborationsData = parseSafe<Collaboration[]>(COLLABORATIONS_KEY, initialCollaborations);
+      const notificationsData = parseSafe<Notification[]>(NOTIFICATIONS_KEY, initialNotifications);
 
       setNews(parseSafe(NEWS_KEY, initialNews));
       setPurchases(purchasesData);
       setFavorites(favoritesData);
       setRatings(ratingsData);
+      setFriends(friendsData);
+      setCollaborations(collaborationsData);
+      setNotifications(notificationsData);
     };
 
     loadData();
@@ -163,6 +191,18 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, [ratings]);
 
   useEffect(() => {
+    setItemSafe(FRIENDS_KEY, friends);
+  }, [friends]);
+
+  useEffect(() => {
+    setItemSafe(COLLABORATIONS_KEY, collaborations);
+  }, [collaborations]);
+
+  useEffect(() => {
+    setItemSafe(NOTIFICATIONS_KEY, notifications);
+  }, [notifications]);
+
+  useEffect(() => {
     if (user) {
       const cartKey = `${CART_KEY}_${user.id}`;
       setItemSafe(cartKey, cart);
@@ -192,6 +232,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     };
 
     setBeats(prev => [newBeat, ...prev]);
+    
+    return { success: true, beatId: newBeatId };
   };
 
   const updateBeat = (id: string, updates: Partial<Beat>) => {
@@ -352,6 +394,183 @@ export function DataProvider({ children }: { children: ReactNode }) {
   
   const getPurchasedBeat = (beatId: string) => beats.find(b => b.id === beatId);
 
+  const addFriend = (userId: string, friendId: string) => {
+    // Check if friend request already exists
+    const existingRequest = friends.find(f => 
+      (f.userId === userId && f.friendId === friendId) || 
+      (f.userId === friendId && f.friendId === userId)
+    );
+    
+    if (existingRequest) {
+      // If request exists, just return
+      return;
+    }
+    
+    const newFriend: Friend = {
+      id: `friend-${Date.now()}-${userId}-${friendId}`,
+      userId,
+      friendId,
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+    };
+    
+    setFriends(prev => [...prev, newFriend]);
+    
+    // Add notification for the friend request
+    const requestingUser = users.find(u => u.id === userId);
+    if (requestingUser) {
+      addNotification({
+        userId: friendId, // recipient
+        type: 'friend_request',
+        title: 'Запрос в друзья',
+        message: `Пользователь ${requestingUser.name} хочет добавить вас в друзья`,
+        senderId: userId,
+        relatedId: newFriend.id,
+      });
+    }
+  };
+
+  const removeFriend = (requestId: string) => {
+    setFriends(prev => prev.filter(f => f.id !== requestId));
+  };
+
+  const acceptFriendRequest = (requestId: string) => {
+    setFriends(prev => 
+      prev.map(f => 
+        f.id === requestId ? { ...f, status: 'accepted' } : f
+      )
+    );
+    
+    // Find the friend request to get the sender and receiver
+    const friendRequest = friends.find(f => f.id === requestId);
+    if (friendRequest) {
+      // Add notification to the sender that their request was accepted
+      const acceptingUser = users.find(u => u.id === friendRequest.userId || u.id === friendRequest.friendId);
+      const otherUserId = friendRequest.userId === user?.id ? friendRequest.friendId : friendRequest.userId;
+      
+      if (acceptingUser) {
+        addNotification({
+          userId: otherUserId, // notify the original sender
+          type: 'friend_accepted',
+          title: 'Запрос в друзья принят',
+          message: `Пользователь ${acceptingUser.name} принял ваш запрос в друзья`,
+          senderId: user?.id,
+          relatedId: requestId,
+        });
+      }
+    }
+  };
+  
+  const rejectFriendRequest = (requestId: string) => {
+    const friendRequest = friends.find(f => f.id === requestId);
+    
+    setFriends(prev => prev.filter(f => f.id !== requestId));
+    
+    // Add notification to the sender that their request was rejected
+    if (friendRequest) {
+      const rejectingUser = users.find(u => u.id === friendRequest.userId || u.id === friendRequest.friendId);
+      const otherUserId = friendRequest.userId === user?.id ? friendRequest.friendId : friendRequest.userId;
+      
+      if (rejectingUser) {
+        addNotification({
+          userId: otherUserId, // notify the original sender
+          type: 'friend_rejected',
+          title: 'Запрос в друзья отклонен',
+          message: `Пользователь ${rejectingUser.name} отклонил ваш запрос в друзья`,
+          senderId: user?.id,
+          relatedId: requestId,
+        });
+      }
+    }
+  };
+
+  const getFriends = (userId: string) => {
+    return friends.filter(f => 
+      (f.userId === userId || f.friendId === userId) && 
+      f.status === 'accepted'
+    );
+  };
+
+  const isFriend = (userId: string, friendId: string) => {
+    return friends.some(f => 
+      ((f.userId === userId && f.friendId === friendId) || 
+       (f.userId === friendId && f.friendId === userId)) && 
+      f.status === 'accepted'
+    );
+  };
+
+  const addCollaboration = (beatId: string, collaborators: string[]) => {
+    // Check if collaboration already exists
+    const existingCollab = collaborations.find(c => c.beatId === beatId);
+    
+    if (existingCollab) {
+      // Update existing collaboration
+      setCollaborations(prev => 
+        prev.map(c => 
+          c.beatId === beatId ? { ...c, collaborators } : c
+        )
+      );
+    } else {
+      const newCollaboration: Collaboration = {
+        id: `collab-${Date.now()}-${beatId}`,
+        beatId,
+        collaborators,
+        createdAt: new Date().toISOString(),
+      };
+      
+      setCollaborations(prev => [...prev, newCollaboration]);
+      
+      // Add notifications to collaborators
+      const requestingUser = users.find(u => u.id === user?.id);
+      collaborators.forEach(collaboratorId => {
+        if (collaboratorId !== user?.id) { // Don't notify the user who initiated the collaboration
+          addNotification({
+            userId: collaboratorId,
+            type: 'collaboration_invite',
+            title: 'Приглашение к коллаборации',
+            message: `Пользователь ${requestingUser?.name} пригласил вас к коллаборации над треком`,
+            senderId: user?.id,
+            relatedId: newCollaboration.id,
+          });
+        }
+      });
+    }
+  };
+
+  const getCollaborations = (userId: string) => {
+    return collaborations.filter(c => c.collaborators.includes(userId));
+  };
+  const addNotification = (notification: Omit<Notification, 'id' | 'createdAt' | 'isRead'>) => {
+    const newNotification: Notification = {
+      ...notification,
+      id: `notif-${Date.now()}-${notification.userId}`,
+      createdAt: new Date().toISOString(),
+      isRead: false,
+    };
+    
+    setNotifications(prev => [...prev, newNotification]);
+  };
+  
+  const markNotificationAsRead = (notificationId: string) => {
+    setNotifications(prev => 
+      prev.map(notif => 
+        notif.id === notificationId ? { ...notif, isRead: true } : notif
+      )
+    );
+  };
+  
+  const deleteNotification = (notificationId: string) => {
+    setNotifications(prev => prev.filter(notif => notif.id !== notificationId));
+  };
+  
+  const getUnreadNotifications = (userId: string) => {
+    return notifications.filter(notif => notif.userId === userId && !notif.isRead);
+  };
+  
+  const getAllNotifications = (userId: string) => {
+    return notifications.filter(notif => notif.userId === userId);
+  };
+  
   return (
     <DataContext.Provider value={{
       beats,
@@ -360,6 +579,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
       favorites,
       ratings,
       cart,
+      friends,
+      collaborations,
+      notifications,
       addBeat,
       updateBeat,
       deleteBeat,
@@ -375,11 +597,26 @@ export function DataProvider({ children }: { children: ReactNode }) {
       rateBeat,
       getUserRating,
       incrementPlays,
+      addFriend,
+      removeFriend,
+      acceptFriendRequest,
+      rejectFriendRequest,
+      getFriends,
+      isFriend,
+      addCollaboration,
+      getCollaborations,
+      addNotification,
+      markNotificationAsRead,
+      deleteNotification,
+      getUnreadNotifications,
+      getAllNotifications,
       getSellerBeats,
       getSellerPurchases,
       getBuyerPurchases,
       getPurchasedBeat,
     }}>
+
+
       {children}
     </DataContext.Provider>
   );

@@ -3,14 +3,18 @@ import { Layout } from '@/components/layout/Layout';
 import { BeatCard } from '@/components/beats/BeatCard';
 import { BeatFilters } from '@/components/beats/BeatFilters';
 import { useData } from '@/contexts/DataContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { Music } from 'lucide-react';
 
 export default function Beats() {
-  const { beats } = useData();
+  const { beats, getCollaborations } = useData();
+  const { user } = useAuth();
   
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedGenre, setSelectedGenre] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [selectedKey, setSelectedKey] = useState('');
+  const [selectedTonalityType, setSelectedTonalityType] = useState<'major' | 'minor' | 'any'>('any');
   const [sortBy, setSortBy] = useState('newest');
 
   const filteredBeats = useMemo(() => {
@@ -38,6 +42,35 @@ export default function Beats() {
       result = result.filter(beat =>
         selectedTags.some(tag => beat.tags.includes(tag))
       );
+    }
+
+    // Key filter
+    if (selectedKey) {
+      result = result.filter(beat => beat.key === selectedKey);
+    }
+
+    // Tonality type filter
+    if (selectedTonalityType && selectedTonalityType !== 'any') {
+      if (selectedTonalityType === 'major') {
+        result = result.filter(beat => beat.key.endsWith('m') === false);
+      } else if (selectedTonalityType === 'minor') {
+        result = result.filter(beat => beat.key.endsWith('m'));
+      }
+    }
+
+    // Include collaboration beats if user is logged in
+    if (user) {
+      const userCollaborations = getCollaborations(user.id);
+      const collaborationBeatIds = userCollaborations.map(c => c.beatId);
+      
+      // Get collaboration beats that aren't already in the result
+      const collaborationBeats = beats.filter(beat => 
+        collaborationBeatIds.includes(beat.id) && 
+        !result.some(r => r.id === beat.id) // Don't duplicate beats
+      );
+      
+      // Add collaboration beats to the result
+      result = [...result, ...collaborationBeats];
     }
 
     // Sorting
@@ -86,6 +119,10 @@ export default function Beats() {
               onGenreChange={setSelectedGenre}
               selectedTags={selectedTags}
               onTagsChange={setSelectedTags}
+              selectedKey={selectedKey}
+              onKeyChange={setSelectedKey}
+              selectedTonalityType={selectedTonalityType}
+              onTonalityTypeChange={setSelectedTonalityType}
               sortBy={sortBy}
               onSortChange={setSortBy}
             />

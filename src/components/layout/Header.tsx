@@ -2,7 +2,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { useData } from '@/contexts/DataContext';
-import { ShoppingCart, User, LogOut, Music, Settings, Heart } from 'lucide-react';
+import { ShoppingCart, User, LogOut, Music, Settings, Heart, Bell } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,7 +15,7 @@ import GlassSurface from '@/components/ui/glass-surface';
 
 export function Header() {
   const { user, logout } = useAuth();
-  const { cart, favorites } = useData();
+  const { cart, favorites, getUnreadNotifications } = useData();
   const navigate = useNavigate();
 
   const handleLogout = () => {
@@ -24,6 +24,7 @@ export function Header() {
   };
 
   const userFavorites = user ? favorites.filter(f => f.userId === user.id) : [];
+  const unreadNotifications = user ? getUnreadNotifications(user.id) : [];
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 flex justify-center px-4 pt-4 pointer-events-none">
@@ -61,6 +62,12 @@ export function Header() {
                   className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
                 >
                   Биты
+                </Link>
+                <Link
+                  to="/users"
+                  className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Пользователи
                 </Link>
                 <Link
                   to="/news"
@@ -117,6 +124,17 @@ export function Header() {
                   </Link>
                 )}
 
+                <Link to="/friend-requests" className="relative">
+                  <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground">
+                    <Bell className="w-5 h-5" />
+                    {unreadNotifications.length > 0 && (
+                      <Badge className="absolute -top-1 -right-1 h-5 w-5 p-0 flex items-center justify-center gradient-primary text-xs">
+                        {unreadNotifications.length}
+                      </Badge>
+                    )}
+                  </Button>
+                </Link>
+
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" className="gap-2">
@@ -144,6 +162,12 @@ export function Header() {
                       <Link to="/profile" className="cursor-pointer">
                         <User className="w-4 h-4 mr-2" />
                         Профиль
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link to="/friend-requests" className="cursor-pointer">
+                        <User className="w-4 h-4 mr-2" />
+                        Друзья
                       </Link>
                     </DropdownMenuItem>
                     <DropdownMenuItem asChild>

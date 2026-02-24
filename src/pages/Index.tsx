@@ -86,7 +86,7 @@ export default function Index() {
                 <ArrowRight className="w-5 h-5 text-primary" />
               </div>
             </Link>
-            <Link to="/beats" className="block">
+            <Link to="/why" className="block">
               <div className="glass-card rounded-2xl p-4 flex items-center justify-between hover:border-primary/30 transition-all">
                 <div>
                   <p className="text-sm text-white/80">Узнать</p>

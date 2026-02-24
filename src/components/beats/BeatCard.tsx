@@ -14,14 +14,23 @@ interface BeatCardProps {
 }
 
 export function BeatCard({ beat, onPlay }: BeatCardProps) {
-  const { user } = useAuth();
-  const { addToCart, cart, toggleFavorite, isFavorite, getUserRating, rateBeat } = useData();
+  const { user, getUserById } = useAuth();
+  const { addToCart, cart, toggleFavorite, isFavorite, getUserRating, rateBeat, collaborations } = useData();
   const { currentBeat, isPlaying, play, pause } = usePlayer();
 
   const isCurrentBeat = currentBeat?.id === beat.id;
   const isInCart = cart.some(item => item.beatId === beat.id);
   const isFav = isFavorite(beat.id);
   const userRating = getUserRating(beat.id);
+
+  const beatCollab = collaborations.find(c => c.beatId === beat.id);
+  const collaboratorNames = beatCollab
+    ? beatCollab.collaborators
+        .filter(id => id !== beat.sellerId)
+        .map(id => getUserById(id))
+        .filter((u): u is NonNullable<ReturnType<typeof getUserById>> => Boolean(u))
+        .map(u => u.name)
+    : [];
 
   const handlePlayClick = () => {
     if (!user) {
@@ -163,6 +172,11 @@ export function BeatCard({ beat, onPlay }: BeatCardProps) {
             {beat.title}
           </h3>
           <p className="text-sm text-muted-foreground truncate">{beat.sellerName}</p>
+          {collaboratorNames.length > 0 && (
+            <p className="text-xs text-accent mt-0.5 truncate">
+              Коллаборация с {collaboratorNames.join(', ')}
+            </p>
+          )}
         </div>
 
         {/* Stats */}

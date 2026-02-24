@@ -101,6 +101,9 @@ export const initialNews: NewsItem[] = [
 export const initialPurchases: Purchase[] = [];
 export const initialFavorites: FavoriteItem[] = [];
 export const initialRatings: Rating[] = [];
+export const initialFriends: Friend[] = [];
+export const initialCollaborations: Collaboration[] = [];
+export const initialNotifications: Notification[] = [];
 
 // Genres list
 export const genres = [
@@ -136,6 +139,14 @@ export const popularTags = [
 ];
 
 // Musical keys
+export const majorKeys = [
+  'C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'
+];
+
+export const minorKeys = [
+  'Cm', 'C#m', 'Dm', 'D#m', 'Em', 'Fm', 'F#m', 'Gm', 'G#m', 'Am', 'A#m', 'Bm'
+];
+
 export const musicalKeys = [
   'C', 'Cm', 'C#', 'C#m',
   'D', 'Dm', 'D#', 'D#m',

@@ -16,6 +16,8 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+
+
 const USERS_STORAGE_KEY = 'beatmarket_users';
 const CURRENT_USER_KEY = 'beatmarket_current_user';
 
@@ -116,6 +118,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     
     const updatedUsers = users.map(u => u.id === user.id ? updatedUser : u);
     setUsers(updatedUsers);
+    
+
   };
 
   const updateUserWallet = (userId: string, rubDelta: number, usdDelta: number) => {

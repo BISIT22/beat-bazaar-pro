@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Search, X, SlidersHorizontal } from 'lucide-react';
-import { genres, popularTags } from '@/data/mockData';
+import { genres, popularTags, majorKeys, minorKeys, musicalKeys } from '@/data/mockData';
 import { cn } from '@/lib/utils';
 
 interface BeatFiltersProps {
@@ -14,6 +14,10 @@ interface BeatFiltersProps {
   onGenreChange: (genre: string) => void;
   selectedTags: string[];
   onTagsChange: (tags: string[]) => void;
+  selectedKey: string;
+  onKeyChange: (key: string) => void;
+  selectedTonalityType: 'major' | 'minor' | 'any';
+  onTonalityTypeChange: (type: 'major' | 'minor' | 'any') => void;
   sortBy: string;
   onSortChange: (sort: string) => void;
 }
@@ -25,10 +29,15 @@ export function BeatFilters({
   onGenreChange,
   selectedTags,
   onTagsChange,
+  selectedKey,
+  onKeyChange,
+  selectedTonalityType,
+  onTonalityTypeChange,
   sortBy,
   onSortChange,
 }: BeatFiltersProps) {
   const [showFilters, setShowFilters] = useState(false);
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
 
   const toggleTag = (tag: string) => {
     if (selectedTags.includes(tag)) {
@@ -45,7 +54,7 @@ export function BeatFilters({
     onSortChange('newest');
   };
 
-  const hasActiveFilters = searchQuery || selectedGenre || selectedTags.length > 0;
+  const hasActiveFilters = searchQuery || selectedGenre || selectedTags.length > 0 || selectedKey || (selectedTonalityType && selectedTonalityType !== 'any');
 
   return (
     <div className="space-y-4">
@@ -88,6 +97,15 @@ export function BeatFilters({
         </Select>
 
         <Button
+          variant={showAdvancedFilters ? "secondary" : "outline"}
+          onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+          className="gap-2"
+        >
+          <SlidersHorizontal className="w-4 h-4" />
+          Расширенные
+        </Button>
+
+        <Button
           variant={showFilters ? "secondary" : "outline"}
           onClick={() => setShowFilters(!showFilters)}
           className="gap-2"
@@ -126,6 +144,46 @@ export function BeatFilters({
         </div>
       )}
 
+      {/* Advanced filters */}
+      {showAdvancedFilters && (
+        <div className="glass-card rounded-xl p-4 animate-slide-up">
+          <p className="text-sm text-muted-foreground mb-3">Расширенные фильтры:</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label>Тип тональности</Label>
+              <Select value={selectedTonalityType} onValueChange={(v: any) => onTonalityTypeChange(v as 'major' | 'minor' | 'any')}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="any">Любой тип</SelectItem>
+                  <SelectItem value="major">Major</SelectItem>
+                  <SelectItem value="minor">Minor</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Тональность</Label>
+              <Select value={selectedKey} onValueChange={onKeyChange}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Выберите тональность" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(selectedTonalityType === 'major' 
+                    ? majorKeys 
+                    : selectedTonalityType === 'minor' 
+                      ? minorKeys 
+                      : musicalKeys
+                  ).map(key => (
+                    <SelectItem key={key} value={key}>{key}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Active filters display */}
       {hasActiveFilters && (
         <div className="flex flex-wrap items-center gap-2">
@@ -148,6 +206,13 @@ export function BeatFilters({
               <X className="w-3 h-3 cursor-pointer" onClick={() => toggleTag(tag)} />
             </Badge>
           ))}
+          {(selectedKey || (selectedTonalityType && selectedTonalityType !== 'any')) && (
+            <Badge variant="secondary" className="gap-1">
+              {selectedTonalityType !== 'any' && selectedTonalityType.charAt(0).toUpperCase() + selectedTonalityType.slice(1)}
+              {selectedKey && `: ${selectedKey}`}
+              <X className="w-3 h-3 cursor-pointer" onClick={() => { onKeyChange(''); onTonalityTypeChange('any'); }} />
+            </Badge>
+          )}
         </div>
       )}
     </div>

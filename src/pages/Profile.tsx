@@ -12,8 +12,8 @@ import { toast } from '@/hooks/use-toast';
 import { getAudioObjectUrl, getWavObjectUrl } from '@/lib/audio-store';
 
 export default function Profile() {
-  const { user, updateUser, updateUserWallet } = useAuth();
-  const { getSellerBeats, getSellerPurchases, getBuyerPurchases, beats, deleteBeat } = useData();
+  const { user, updateUser, updateUserWallet, getUserById } = useAuth();
+  const { getSellerBeats, getSellerPurchases, getBuyerPurchases, beats, deleteBeat, updateBeat, getCollaborations } = useData();
   
   const [isEditing, setIsEditing] = useState(false);
   const [name, setName] = useState(user?.name || '');
@@ -35,13 +35,39 @@ export default function Profile() {
   const sellerPurchases = user.role === 'seller' ? getSellerPurchases(user.id) : [];
   const buyerPurchases = user.role === 'buyer' ? getBuyerPurchases(user.id) : [];
 
+  const userCollaborations = getCollaborations(user.id);
+  const collaborationBeats = userCollaborations
+    .map(collab => beats.find(b => b.id === collab.beatId))
+    .filter((b): b is typeof beats[number] => Boolean(b));
+
+  const getBeatCollaboratorNames = (beatId: string) => {
+    const collab = userCollaborations.find(c => c.beatId === beatId);
+    if (!collab) return [];
+    return collab.collaborators
+      .filter(id => id !== user.id)
+      .map(id => getUserById(id))
+      .filter((u): u is NonNullable<ReturnType<typeof getUserById>> => Boolean(u))
+      .map(u => u.name);
+  };
+
   const totalEarnedRub = sellerPurchases.filter(p => p.currency === 'RUB').reduce((sum, p) => sum + p.priceRub, 0);
   const totalEarnedUsd = sellerPurchases.filter(p => p.currency === 'USD').reduce((sum, p) => sum + p.priceUsd, 0);
   const totalSpentRub = buyerPurchases.filter(p => p.currency === 'RUB').reduce((sum, p) => sum + p.priceRub, 0);
   const totalSpentUsd = buyerPurchases.filter(p => p.currency === 'USD').reduce((sum, p) => sum + p.priceUsd, 0);
 
   const handleSave = () => {
-    updateUser({ name, bio, avatar });
+    const updates: Partial<User> = { name, bio, avatar };
+    
+    // If the name has changed, update the user and the seller names of their beats
+    if (user && user.name !== name) {
+      // Get all the user's beats to update their seller names
+      const userBeats = getSellerBeats(user.id);
+      userBeats.forEach(beat => {
+        updateBeat(beat.id, { sellerName: name });
+      });
+    }
+    
+    updateUser(updates);
     setIsEditing(false);
     toast({ title: 'Профиль обновлён' });
   };
@@ -131,7 +157,6 @@ export default function Profile() {
                       </span>
                     </div>
                     <p className="text-muted-foreground mb-4">{user.bio || 'Нет описания'}</p>
-                    <Button onClick={() => setIsEditing(true)} variant="outline" size="sm" className="gap-2"><Edit2 className="w-4 h-4" />Редактировать</Button>
                   </>
                 )}
               </div>
@@ -204,29 +229,67 @@ export default function Profile() {
               <h2 className="text-xl font-display font-bold mb-4">Мои биты</h2>
               {sellerBeats.length > 0 ? (
                 <div className="space-y-3">
-                  {sellerBeats.map(beat => (
-                    <div key={beat.id} className="flex items-center gap-4 p-3 rounded-lg bg-secondary/50">
-                      <img src={beat.coverUrl} alt={beat.title} className="w-12 h-12 rounded object-cover" />
-                      <div className="flex-1">
-                        <p className="font-medium">{beat.title}</p>
-                        <p className="text-xs text-muted-foreground">{beat.salesCount} продаж</p>
+                  {sellerBeats.map(beat => {
+                    const collaboratorNames = getBeatCollaboratorNames(beat.id);
+                    return (
+                      <div key={beat.id} className="flex items-center gap-4 p-3 rounded-lg bg-secondary/50">
+                        <img src={beat.coverUrl} alt={beat.title} className="w-12 h-12 rounded object-cover" />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium truncate">{beat.title}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {beat.salesCount} продаж
+                          </p>
+                          {collaboratorNames.length > 0 && (
+                            <p className="text-xs text-accent mt-1 truncate">
+                              Коллаборация с {collaboratorNames.join(', ')}
+                            </p>
+                          )}
+                        </div>
+                        <span className="text-sm font-medium">₽{beat.priceRub}</span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDeleteBeat(beat.id, beat.title)}
+                          className="text-muted-foreground hover:text-destructive"
+                          title="Удалить бит"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
                       </div>
-                      <span className="text-sm font-medium">₽{beat.priceRub}</span>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDeleteBeat(beat.id, beat.title)}
-                        className="text-muted-foreground hover:text-destructive"
-                        title="Удалить бит"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
                 <p className="text-muted-foreground">Вы ещё не загрузили биты</p>
               )}
+            </div>
+          )}
+
+          {collaborationBeats.length > 0 && (
+            <div className="glass-card rounded-xl p-6 mt-6">
+              <h2 className="text-xl font-display font-bold mb-4">Коллаборации</h2>
+              <div className="space-y-3">
+                {collaborationBeats.map(beat => {
+                  const collaboratorNames = getBeatCollaboratorNames(beat.id);
+                  return (
+                    <div key={beat.id} className="flex items-center gap-4 p-3 rounded-lg bg-secondary/50">
+                      <img src={beat.coverUrl} alt={beat.title} className="w-12 h-12 rounded object-cover" />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium truncate">{beat.title}</p>
+                        <p className="text-xs text-muted-foreground truncate">
+                          Автор: {beat.sellerName}
+                        </p>
+                        {collaboratorNames.length > 0 && (
+                          <p className="text-xs text-accent mt-1 truncate">
+                            Коллаборация с {collaboratorNames.join(', ')}
+                          </p>
+                        )}
+                      </div>
+                      <span className="text-sm font-medium">₽{beat.priceRub}</span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
 

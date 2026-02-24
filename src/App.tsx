@@ -17,6 +17,10 @@ import Cart from "./pages/Cart";
 import Profile from "./pages/Profile";
 import Upload from "./pages/Upload";
 import Admin from "./pages/Admin";
+import Settings from "./pages/Settings";
+import Users from "./pages/Users";
+import FriendRequests from "./pages/FriendRequests";
+import WhyBeatMarket from "./pages/WhyBeatMarket";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -41,6 +45,10 @@ const App = () => (
                 <Route path="/profile" element={<Profile />} />
                 <Route path="/upload" element={<Upload />} />
                 <Route path="/admin" element={<Admin />} />
+                <Route path="/settings" element={<Settings />} />
+                <Route path="/users" element={<Users />} />
+                <Route path="/friend-requests" element={<FriendRequests />} />
+                <Route path="/why" element={<WhyBeatMarket />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </BrowserRouter>

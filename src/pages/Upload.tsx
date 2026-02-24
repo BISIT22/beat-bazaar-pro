@@ -8,14 +8,14 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAuth } from '@/contexts/AuthContext';
 import { useData } from '@/contexts/DataContext';
-import { genres, musicalKeys } from '@/data/mockData';
-import { Upload as UploadIcon, Music, ArrowLeft } from 'lucide-react';
+import { genres, majorKeys, minorKeys } from '@/data/mockData';
+import { Upload as UploadIcon, Music, ArrowLeft, Users } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 
 export default function Upload() {
   const navigate = useNavigate();
-  const { user } = useAuth();
-  const { addBeat } = useData();
+  const { user, getUserById } = useAuth();
+  const { addBeat, addCollaboration, getFriends } = useData();
   
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -26,9 +26,12 @@ export default function Upload() {
   const [tags, setTags] = useState('');
   const [bpm, setBpm] = useState('');
   const [key, setKey] = useState('');
+  const [tonalityType, setTonalityType] = useState<'major' | 'minor'>('major');
   const [coverUrl, setCoverUrl] = useState('');
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [wavFile, setWavFile] = useState<File | null>(null);
+  const [collaborators, setCollaborators] = useState<string[]>([]);
+  const [showCollaborators, setShowCollaborators] = useState(false);
 
   if (!user || user.role !== 'seller') {
     return (
@@ -42,6 +45,16 @@ export default function Upload() {
     );
   }
 
+  const friends = user ? getFriends(user.id) : [];
+
+  const toggleCollaborator = (collaboratorId: string) => {
+    setCollaborators((prev) =>
+      prev.includes(collaboratorId)
+        ? prev.filter((id) => id !== collaboratorId)
+        : [...prev, collaboratorId],
+    );
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -51,7 +64,7 @@ export default function Upload() {
     }
 
     try {
-      await addBeat({
+      const result = await addBeat({
         sellerId: user.id,
         sellerName: user.name,
         title,
@@ -67,6 +80,13 @@ export default function Upload() {
         bpm: Number(bpm),
         key,
       });
+
+      // Add collaborators if any
+      if (collaborators.length > 0) {
+        // Include the seller's ID in the collaborators list
+        const allCollaborators = [user.id, ...collaborators];
+        addCollaboration(result.beatId, allCollaborators);
+      }
 
       toast({ title: 'Бит загружен!', description: title });
       navigate('/profile');
@@ -112,10 +132,29 @@ export default function Upload() {
 
             <div className="grid md:grid-cols-2 gap-6">
               <div className="space-y-2"><Label>BPM *</Label><Input type="number" value={bpm} onChange={(e) => setBpm(e.target.value)} placeholder="140" required /></div>
-              <div className="space-y-2"><Label>Тональность *</Label>
-                <Select value={key} onValueChange={setKey}><SelectTrigger><SelectValue placeholder="Выберите" /></SelectTrigger>
-                  <SelectContent>{musicalKeys.map(k => <SelectItem key={k} value={k}>{k}</SelectItem>)}</SelectContent>
-                </Select>
+              <div className="space-y-2">
+                <Label>Тональность *</Label>
+                <div className="flex gap-2">
+                  <Select value={tonalityType} onValueChange={(v: any) => setTonalityType(v as 'major' | 'minor')}>
+                    <SelectTrigger className="w-1/3">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="major">Major</SelectItem>
+                      <SelectItem value="minor">Minor</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={key} onValueChange={setKey}>
+                    <SelectTrigger className="flex-1">
+                      <SelectValue placeholder="Выберите" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(tonalityType === 'major' ? majorKeys : minorKeys).map(k => (
+                        <SelectItem key={k} value={k}>{k}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </div>
 
@@ -159,7 +198,75 @@ export default function Upload() {
               </p>
             </div>
 
-            <Button type="submit" variant="gradient" size="lg" className="w-full gap-2"><UploadIcon className="w-5 h-5" />Загрузить бит</Button>
+            <div className="space-y-2">
+              <Label
+                className="flex items-center gap-2 cursor-pointer"
+                onClick={() => setShowCollaborators(!showCollaborators)}
+              >
+                <Users className="w-4 h-4" />
+                Коллаборации с друзьями
+              </Label>
+              {showCollaborators && (
+                <div className="border rounded-lg p-4 bg-secondary">
+                  {friends.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      У вас пока нет друзей. Добавьте пользователей во вкладке «Пользователи», чтобы выбирать их для коллабораций.
+                    </p>
+                  ) : (
+                    <>
+                      <p className="text-sm text-muted-foreground mb-3">
+                        Выберите друзей, с которыми вы хотите сделать совместный трек.
+                      </p>
+                      <div className="space-y-2 max-h-48 overflow-auto">
+                        {friends.map((relation) => {
+                          if (!user) return null;
+                          const otherUserId =
+                            relation.userId === user.id ? relation.friendId : relation.userId;
+                          const friendUser = getUserById(otherUserId);
+                          if (!friendUser) return null;
+
+                          const checked = collaborators.includes(friendUser.id);
+
+                          return (
+                            <label
+                              key={relation.id}
+                              className="flex items-center gap-3 p-2 rounded-lg bg-background/40 cursor-pointer hover:bg-background/60"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => toggleCollaborator(friendUser.id)}
+                                className="h-4 w-4"
+                              />
+                              <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center overflow-hidden">
+                                  {friendUser.avatar ? (
+                                    <img
+                                      src={friendUser.avatar}
+                                      alt={friendUser.name}
+                                      className="w-full h-full object-cover"
+                                    />
+                                  ) : (
+                                    <Users className="w-4 h-4 text-muted-foreground" />
+                                  )}
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-sm font-medium truncate">{friendUser.name}</p>
+                                  <p className="text-xs text-muted-foreground truncate">
+                                    {friendUser.email}
+                                  </p>
+                                </div>
+                              </div>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+        <Button type="submit" variant="gradient" size="lg" className="w-full gap-2"><UploadIcon className="w-5 h-5" />Загрузить бит</Button>
           </form>
         </div>
       </div>
